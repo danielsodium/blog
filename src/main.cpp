@@ -9,6 +9,7 @@
 
 namespace fs = std::filesystem;
 
+// Function to escape HTML special characters
 std::string escapeHtml(const std::string &text) {
     std::string escaped = text;
     escaped = std::regex_replace(escaped, std::regex("&"), "&amp;");
@@ -19,17 +20,30 @@ std::string escapeHtml(const std::string &text) {
     return escaped;
 }
 
+// Function to convert Markdown to HTML
 std::string markdownToHtml(const std::string &markdown) {
     std::istringstream stream(markdown);
     std::string line;
     std::string html;
+    bool inCodeBlock = false;
 
     std::regex imageRegex(R"(\!\[([^\]]*)\]\(([^\)]+)\))");
     std::regex linkRegex(R"(\[([^\]]+)\]\(([^\)]+)\))");
+    std::regex inlineCodeRegex(R"(`([^`]*)`)");
 
     while (std::getline(stream, line)) {
         if (line.empty()) {
             html += "<p></p>\n";
+        } else if (line.rfind("```", 0) == 0) {
+            if (inCodeBlock) {
+                html += "</code></pre>\n";
+                inCodeBlock = false;
+            } else {
+                html += "<pre><code>";
+                inCodeBlock = true;
+            }
+        } else if (inCodeBlock) {
+            html += escapeHtml(line) + "\n";
         } else if (line.rfind("###### ", 0) == 0) {
             html += "<h6>" + line.substr(7) + "</h6>\n";
         } else if (line.rfind("##### ", 0) == 0) {
@@ -42,12 +56,6 @@ std::string markdownToHtml(const std::string &markdown) {
             html += "<h2>" + line.substr(3) + "</h2>\n";
         } else if (line.rfind("# ", 0) == 0) {
             html += "<h1>" + line.substr(2) + "</h1>\n";
-        } else if (line.rfind("```", 0) == 0) {
-            html += "<pre><code>";
-            while (std::getline(stream, line) && line != "```") {
-                html += escapeHtml(line) + "\n";
-            }
-            html += "</code></pre>\n";
         } else if (line.rfind("- ", 0) == 0) {
             html += "<ul>\n";
             do {
@@ -56,6 +64,8 @@ std::string markdownToHtml(const std::string &markdown) {
             html += "</ul>\n";
             continue; // Prevent extra <p> from being added
         } else {
+            // Replace inline code markdown with HTML
+            line = std::regex_replace(line, inlineCodeRegex, "<code>$1</code>");
             // Replace image markdown with HTML
             line = std::regex_replace(line, imageRegex, "<img src=\"$2\" alt=\"$1\">");
             // Replace link markdown with HTML
@@ -64,9 +74,14 @@ std::string markdownToHtml(const std::string &markdown) {
         }
     }
 
+    if (inCodeBlock) {
+        html += "</code></pre>\n";
+    }
+
     return html;
 }
 
+// Function to generate the HTML file using the template
 void generateHtmlFile(const std::string &templateFile, const std::string &markdownFile, const std::string &htmlFile) {
     // Load the markdown file
     std::ifstream mdFile(markdownFile);
@@ -175,11 +190,11 @@ int main() {
             generateHtmlFile(templateFile, markdownFile, htmlFile);
 
             // Store the relative path of the generated HTML file
-            htmlFiles.push_back(entry.path().stem().string() + ".html");
+            htmlFiles.push_back(entry.path().stem().string());
         }
         else {
             std::system(("cp " + entry.path().string() + " " + outDir + "/" + entry.path().filename().string()).c_str());
-        }
+        } 
     }
 
     // Generate the blog page with the list of links to all generated HTML files
